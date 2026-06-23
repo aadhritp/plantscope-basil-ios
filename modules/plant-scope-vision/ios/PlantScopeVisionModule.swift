@@ -88,10 +88,15 @@ public class PlantScopeVisionModule: Module {
       throw PlantScopeVisionError.invalidOutput("detector")
     }
 
-    let rawBoxes = Self.decodeDetectOutput(array, confidenceThreshold: Self.confidenceThreshold)
+    let (rawBoxes, debug) = Self.decodeDetectOutput(array, confidenceThreshold: Self.confidenceThreshold)
     let finalBoxes = Self.nonMaxSuppressPerClass(rawBoxes, iouThreshold: Self.iouThreshold)
 
     if finalBoxes.isEmpty {
+      // TEMPORARY debug fields — surfaced in the UI to diagnose the
+      // "couldn't get a clear look" issue on real-device photos without
+      // needing Xcode console access. Remove once root caused.
+      let debugMaxScorePct = (Double(debug.globalBestScore) * 1000).rounded() / 10
+      let debugMaxClass = debug.numClasses > 0 ? Self.classLabels[debug.globalBestClassIndex] : "n/a"
       return [
         "primaryClassId": "healthy",
         "primaryConfidence": 0.0,
@@ -99,6 +104,9 @@ public class PlantScopeVisionModule: Module {
         "uncertain": true,
         "boxes": [] as [[String: Any]],
         "noDetections": true,
+        "debugMaxScore": debugMaxScorePct,
+        "debugMaxClass": debugMaxClass,
+        "debugNumAnchors": debug.numAnchors,
       ]
     }
 
@@ -325,17 +333,35 @@ public class PlantScopeVisionModule: Module {
     let score: Float
   }
 
+  /// Diagnostic-only summary of what the model actually saw, independent of
+  /// the confidence threshold. TEMPORARY — added to debug the "couldn't get
+  /// a clear look" issue reported on real-device photos; remove once root
+  /// caused.
+  struct DecodeDebugInfo {
+    let globalBestScore: Float
+    let globalBestClassIndex: Int
+    let numAnchors: Int
+    let numClasses: Int
+  }
+
   /// Decodes the raw detect head output. Expected shape is [1, 4 + nc, numAnchors]:
   /// channels 0-3 = box (cx, cy, w, h) already decoded to pixel space by the
   /// model's own head; channels 4..(4+nc-1) = per-class sigmoid scores. Takes
   /// the best class per anchor, mirroring Ultralytics' own NMS input prep.
-  private static func decodeDetectOutput(_ array: MLMultiArray, confidenceThreshold: Float) -> [RawBox] {
+  private static func decodeDetectOutput(
+    _ array: MLMultiArray,
+    confidenceThreshold: Float
+  ) -> (boxes: [RawBox], debug: DecodeDebugInfo) {
     let shape = array.shape.map { $0.intValue }
-    guard shape.count == 3 else { return [] }
+    guard shape.count == 3 else {
+      return ([], DecodeDebugInfo(globalBestScore: 0, globalBestClassIndex: 0, numAnchors: 0, numClasses: 0))
+    }
     let numChannels = shape[1]
     let numAnchors = shape[2]
     let numClasses = numChannels - 4
-    guard numClasses > 0 else { return [] }
+    guard numClasses > 0 else {
+      return ([], DecodeDebugInfo(globalBestScore: 0, globalBestClassIndex: 0, numAnchors: numAnchors, numClasses: 0))
+    }
 
     let strides = array.strides.map { $0.intValue }
     let channelStride = strides[1]
@@ -348,6 +374,9 @@ public class PlantScopeVisionModule: Module {
     var boxes: [RawBox] = []
     boxes.reserveCapacity(64)
 
+    var globalBestScore: Float = -Float.greatestFiniteMagnitude
+    var globalBestClass = 0
+
     for anchor in 0..<numAnchors {
       var bestScore: Float = -Float.greatestFiniteMagnitude
       var bestClass = 0
@@ -357,6 +386,10 @@ public class PlantScopeVisionModule: Module {
           bestScore = score
           bestClass = c
         }
+      }
+      if bestScore > globalBestScore {
+        globalBestScore = bestScore
+        globalBestClass = bestClass
       }
       if bestScore >= confidenceThreshold {
         boxes.append(
@@ -371,7 +404,13 @@ public class PlantScopeVisionModule: Module {
         )
       }
     }
-    return boxes
+    let debug = DecodeDebugInfo(
+      globalBestScore: globalBestScore,
+      globalBestClassIndex: globalBestClass,
+      numAnchors: numAnchors,
+      numClasses: numClasses
+    )
+    return (boxes, debug)
   }
 
   /// Greedy NMS run separately within each class group — matches

@@ -30,6 +30,12 @@ export function ResultsView({ imageUri, result, onCheckAnother }: Props) {
           <Pressable style={styles.retryButton} onPress={onCheckAnother}>
             <Text style={styles.retryButtonText}>Try another photo</Text>
           </Pressable>
+          {result.debugMaxScore !== undefined && (
+            <Text style={styles.debugText}>
+              Debug: best raw score {result.debugMaxScore}% for &quot;{result.debugMaxClass}&quot;
+              {' '}across {result.debugNumAnchors} anchors
+            </Text>
+          )}
         </View>
       </View>
     );
@@ -160,6 +166,12 @@ const styles = StyleSheet.create({
     color: Brand.textPrimary,
     fontWeight: '600',
     fontSize: 14,
+  },
+  debugText: {
+    marginTop: Spacing.two,
+    fontSize: 11,
+    lineHeight: 14,
+    color: Brand.textMuted,
   },
   photoWrap: {
     height: 280,

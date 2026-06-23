@@ -29,6 +29,10 @@ export type DiagnosisResult = {
   boxes: DetectionBox[];
   noDetections: boolean;
   isHealthy: boolean;
+  /** TEMPORARY debug fields, only present when noDetections is true. */
+  debugMaxScore?: number;
+  debugMaxClass?: string;
+  debugNumAnchors?: number;
 };
 
 export async function runDiagnosis(imageUri: string): Promise<DiagnosisResult> {
