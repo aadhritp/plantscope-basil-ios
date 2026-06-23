@@ -1,0 +1,7 @@
+{
+  "name": "plant-scope-vision",
+  "version": "0.1.0",
+  "description": "On-device plant disease diagnosis (CoreML classifier + OBB lesion mapper)",
+  "main": "src/PlantScopeVisionModule.ts",
+  "license": "MIT"
+}
