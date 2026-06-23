@@ -1,0 +1,48 @@
+workflows:
+  unsigned-ipa:
+    name: Build unsigned iOS IPA
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      node: 20
+      vars:
+        XCODE_WORKSPACE: "ios/PlantScope.xcworkspace"
+        XCODE_SCHEME: "PlantScope"
+    scripts:
+      - name: Install JS dependencies
+        script: npm install
+      - name: Generate native iOS project
+        script: npx expo prebuild --platform ios --no-install
+      - name: Install CocoaPods dependencies
+        script: |
+          cd ios
+          pod install
+      - name: Build unsigned .app
+        script: |
+          cd ios
+          xcodebuild \
+            -workspace PlantScope.xcworkspace \
+            -scheme PlantScope \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            clean build
+      - name: Package unsigned .ipa
+        script: |
+          set -e
+          cd ios
+          APP_PATH=$(find build/Build/Products -maxdepth 2 -name "*.app" -print -quit)
+          echo "Found app at: $APP_PATH"
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -r ../PlantScope-unsigned.ipa Payload
+          cd ..
+          ls -la PlantScope-unsigned.ipa
+    artifacts:
+      - PlantScope-unsigned.ipa
